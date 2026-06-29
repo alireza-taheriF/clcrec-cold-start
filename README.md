@@ -21,6 +21,15 @@ Evaluated on 215 users with cold item interactions (MovieLens-1M).
 
 CLCRec achieves **+100% HR@10** and **+108% NDCG@10** over the baseline.
 
+### Visualization
+
+The figure below comes from a full run with the default hyperparameters in `main.py` (150 epochs, `HIDDEN_DIM=32`, `L2_REG=5e-4`).
+
+- **Left:** Hit Rate@K on cold items. CLCRec beats the L2-normalized genre+year baseline at every K, with the largest gap at smaller K where ranking quality matters most.
+- **Right:** InfoNCE training loss over epochs. The steady decline shows the content encoder learning to align with fixed SVD collaborative embeddings.
+
+![Hit Rate@K comparison and training loss curve](results.png)
+
 ---
 
 ## Overview
@@ -72,7 +81,7 @@ In each batch of warm items, the positive pair is `(z_content[i], z_collab[i])`.
 clcrec-cold-start/
 ├── main.py              # Entry point: full pipeline
 ├── requirements.txt     # Dependencies
-├── results.png          # Output chart (generated after run)
+├── results.png          # Evaluation chart (committed; see Results)
 ├── data/                # MovieLens-1M (downloaded automatically)
 └── src/
     ├── dataset.py       # Download, preprocessing, SVD, cold/warm split
@@ -221,9 +230,11 @@ Training CLCRec | epochs=150 | batch=256 | τ=0.1
 Chart saved to results.png
 ```
 
-### `results.png`
+### Chart output
 
-Two plots:
+Running `python main.py` writes `results.png` to the project root. A sample run is shown in the [Results](#results) section above.
+
+The file contains two panels:
 
 1. Hit Rate@K for CLCRec vs. Baseline
 2. Training loss curve over epochs
