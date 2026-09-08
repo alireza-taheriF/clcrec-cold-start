@@ -113,6 +113,20 @@ class ContentFeaturizer:
             return pickle.load(f)
 
 
+def _http_get(url: str, dest: str) -> None:
+    try:
+        urllib.request.urlretrieve(url, dest)
+        return
+    except Exception as first:
+        import ssl
+        ctx = ssl._create_unverified_context()
+        try:
+            with urllib.request.urlopen(url, context=ctx) as resp, open(dest, "wb") as out:
+                out.write(resp.read())
+        except Exception:
+            raise first
+
+
 def download_movielens(data_dir: str = "data"):
     os.makedirs(data_dir, exist_ok=True)
     url = "https://files.grouplens.org/datasets/movielens/ml-1m.zip"
@@ -120,7 +134,7 @@ def download_movielens(data_dir: str = "data"):
 
     if not os.path.exists(os.path.join(data_dir, "ml-1m", "ratings.dat")):
         print("Downloading MovieLens-1M...")
-        urllib.request.urlretrieve(url, zip_path)
+        _http_get(url, zip_path)
         with zipfile.ZipFile(zip_path, "r") as z:
             z.extractall(data_dir)
         print("Download complete.")
