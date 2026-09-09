@@ -2,18 +2,22 @@ import argparse
 
 from src.config import ExperimentConfig
 from src.experiment import run_experiment
+from src.product import run_firstslot
 from src.recommend import ColdStartRecommender
 from src.serve import serve
 
 
 def build_parser():
     p = argparse.ArgumentParser(
-        description="CLCRec Lab Kit — academic/industrial cold-start recommendation",
+        description="FirstSlot — first-impression engine for zero-sale items",
     )
+    p.add_argument("--product", action="store_true",
+                   help="Train FirstSlot on the industrial MRO catalog (what you show a buyer)")
     p.add_argument("--protocol", choices=("academic", "legacy"), default="academic",
                    help="academic: no leakage, warm-only user history, Recall+CI; "
                         "legacy: original README cold-pool HR table")
-    p.add_argument("--epochs", type=int, default=150)
+    p.add_argument("--epochs", type=int, default=None,
+                   help="Default 40 for --product, 150 for MovieLens")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--n-test-users", dest="n_test_users", type=int, default=1000)
     p.add_argument("--cold-threshold", dest="cold_threshold", type=int, default=10)
@@ -44,6 +48,9 @@ def demo_new_item(artifact_dir, title, genres, year, k):
 
 def main():
     args = build_parser().parse_args()
+    if args.product:
+        run_firstslot(args.artifact_dir, epochs=args.epochs or 40, seed=args.seed)
+        return
     if args.serve:
         serve(args.artifact_dir, args.host, args.port)
         return
@@ -54,7 +61,7 @@ def main():
     cfg = ExperimentConfig(
         data_dir=args.data_dir,
         artifact_dir=args.artifact_dir,
-        epochs=args.epochs,
+        epochs=args.epochs or 150,
         seed=args.seed,
         n_test_users=args.n_test_users,
         cold_threshold=args.cold_threshold,

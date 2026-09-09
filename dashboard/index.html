@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>لانچ‌اسلات — اولین نمایش کالای صفر‌فروش</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">FirstSlot · موتور پرتاب MRO</p>
+      <h1>اولین نمایش را هدر ندهید</h1>
+      <p class="lead">
+        کالای جدید را در «تازه‌ها» دفن نکنید و به همه هم نپاشید.
+        بودجهٔ محدود ایمپرشن را به کارخانه‌هایی بدهید که هم می‌خرند،
+        هم سیگنال تمیز برای بقیه می‌سازند.
+      </p>
+    </div>
+    <div class="kpis" id="kpis"></div>
+  </header>
+
+  <section class="compare" id="compare"></section>
+
+  <main>
+    <aside>
+      <h2>قطعات تازه‌وارد</h2>
+      <p class="hint">صفر سفارش در آموزش — جانشین یک خانوادهٔ فنی</p>
+      <ol id="skus" class="skus"></ol>
+    </aside>
+
+    <section class="plan">
+      <div class="toolbar">
+        <label>بودجهٔ نمایش
+          <input type="number" id="budget" value="40" min="10" max="80" step="10" />
+        </label>
+        <label>تنوع صنعت
+          <input type="range" id="diversity" min="0" max="80" value="15" />
+        </label>
+        <button type="button" id="run">برنامهٔ لانچ</button>
+      </div>
+
+      <div class="new-sku">
+        <h3>یا یک کد فنی که هنوز در کاتالوگ نیست</h3>
+        <div class="row">
+          <input id="new-title" placeholder="مثلاً الکتروموتور 7.5kW-IE3-B5 Weg" />
+          <input id="new-tags" placeholder="تگ: motor|WEG|7.5kW-IE3-B5|IEC|steel" />
+          <button type="button" id="run-new">پرتاب کد جدید</button>
+        </div>
+      </div>
+
+      <div id="status" class="status">یک قطعه از فهرست را انتخاب کنید.</div>
+      <div id="result"></div>
+    </section>
+  </main>
+
+  <footer>
+    کاتالوگ نمونهٔ نگهداری و تعمیرات است. با دادهٔ کارفرما عوض می‌شود.
+    متریک فروش: از هر B نمایش اول، چند تا به خریدار واقعی رسید — نه HR@K فیلم.
+  </footer>
+  <script src="/static/app.js"></script>
+</body>
+</html>

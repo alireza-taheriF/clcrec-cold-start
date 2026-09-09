@@ -25,21 +25,38 @@ class ColdStartRecommender:
                  featurizer: ContentFeaturizer, idx2movie: dict,
                  movie2idx: dict, meta: dict, warm_items, cold_items,
                  user_pos_items: dict | None = None,
-                 user2idx: dict | None = None):
+                 user2idx: dict | None = None,
+                 user_meta: dict | None = None,
+                 vertical: str = "movies",
+                 truth_by_item: dict | None = None):
         self.encoder = encoder
         self.item_emb = item_emb
         self.featurizer = featurizer
         self.idx2movie = {int(k): int(v) for k, v in idx2movie.items()}
         self.movie2idx = {int(k): int(v) for k, v in movie2idx.items()}
-        self.meta = meta
+        self.meta = {str(k): v for k, v in meta.items()}
         self.warm = set(int(i) for i in warm_items)
         self.cold = set(int(i) for i in cold_items)
         self.user_pos_items = user_pos_items or {}
         self.user2idx = {int(k): int(v) for k, v in (user2idx or {}).items()}
+        self.idx2user = {v: k for k, v in self.user2idx.items()}
+        self.user_meta = {int(k): v for k, v in (user_meta or {}).items()}
+        self.vertical = vertical
+        self.truth_by_item = {int(k): set(v) for k, v in (truth_by_item or {}).items()}
+
+    def _info(self, movie_id: int) -> dict:
+        return self.meta.get(str(movie_id)) or {}
 
     def _meta(self, movie_id: int) -> tuple[str, str]:
-        info = self.meta.get(str(movie_id)) or self.meta.get(movie_id) or {}
-        return info.get("title", ""), info.get("genres", "")
+        info = self._info(movie_id)
+        return info.get("title", ""), info.get("genres", info.get("tags", ""))
+
+    def _user_segments(self) -> dict:
+        out = {}
+        for uid, info in self.user_meta.items():
+            if uid in self.user2idx:
+                out[self.user2idx[uid]] = info.get("segment", "unknown")
+        return out
 
     def _pool(self, name: str) -> np.ndarray:
         if name == "cold":
@@ -99,6 +116,103 @@ class ColdStartRecommender:
         query = self.embed_new_item(title, genres, year)
         return self._score_pool(query, self._pool("all"), k)
 
+    def list_new_items(self):
+        rows = []
+        for idx in sorted(self.cold):
+            item_id = self.idx2movie[idx]
+            info = self._info(item_id)
+            rows.append({
+                "item_id": item_id,
+                "sku": info.get("sku", str(item_id)),
+                "title": info.get("title", ""),
+                "category_fa": info.get("category_fa", info.get("genres", "")),
+                "brand": info.get("brand", ""),
+                "n_truth": len(self.truth_by_item.get(idx, ())),
+            })
+        return rows
+
+    def overview(self):
+        return {
+            "vertical": self.vertical,
+            "n_items": int(len(self.item_emb)),
+            "n_users": len(self.user2idx),
+            "n_warm": len(self.warm),
+            "n_new": len(self.cold),
+            "product": "FirstSlot",
+        }
+
+    def plan_launch(self, item_id: int | None = None, title: str | None = None,
+                    tags: str | None = None, budget: int = 40, diversity: float = 0.15):
+        from src.launch import affinities, allocate, explain_user, user_vectors
+
+        if item_id is not None:
+            if item_id not in self.movie2idx:
+                raise KeyError(f"Unknown item_id={item_id}")
+            idx = self.movie2idx[item_id]
+            query = self.item_emb[idx]
+            info = self._info(item_id)
+            title = info.get("title", str(item_id))
+            tags = info.get("tags", info.get("genres", ""))
+        else:
+            if not title:
+                raise ValueError("Provide item_id or title+tags")
+            query = self.embed_new_item(title, tags or "", None)
+            info = {"title": title, "tags": tags, "sku": "NEW", "category_fa": ""}
+            item_id = None
+            idx = None
+
+        qn = np.linalg.norm(query)
+        if qn > 1e-8:
+            query = query / qn
+
+        user_embs = user_vectors(self.item_emb, self.user_pos_items, self.warm)
+        aff = affinities(query, user_embs)
+        chosen = allocate(aff, self._user_segments(), budget, diversity)
+        audience = []
+        for rank, uidx in enumerate(chosen, start=1):
+            uid = self.idx2user.get(uidx, uidx)
+            um = self.user_meta.get(uid, {})
+            liked = self.user_pos_items.get(uidx, set())
+            audience.append({
+                "rank": rank,
+                "user_id": int(uid),
+                "name": um.get("name", f"user {uid}"),
+                "segment": um.get("segment", ""),
+                "segment_fa": um.get("segment_fa", um.get("segment", "")),
+                "affinity": round(aff.get(uidx, 0.0), 4),
+                "why": explain_user(uidx, query, self.item_emb, liked,
+                                    self.idx2movie, self.meta, k=2),
+            })
+
+        substitutes = []
+        if query is not None:
+            for row in self._score_pool(query, self._pool("warm"), k=6):
+                sinfo = self._info(row.item_id)
+                substitutes.append({
+                    "item_id": row.item_id,
+                    "sku": sinfo.get("sku", ""),
+                    "title": row.title,
+                    "score": round(row.score, 4),
+                    "category_fa": sinfo.get("category_fa", ""),
+                    "brand": sinfo.get("brand", ""),
+                })
+
+        return {
+            "item": {
+                "item_id": item_id,
+                "title": title,
+                "tags": tags,
+                "sku": info.get("sku", ""),
+                "category_fa": info.get("category_fa", ""),
+                "brand": info.get("brand", ""),
+            },
+            "budget": budget,
+            "diversity": diversity,
+            "audience": audience,
+            "substitutes": substitutes,
+            "n_scored_users": len(aff),
+        }
+
     def save(self, artifact_dir: str) -> None:
         os.makedirs(artifact_dir, exist_ok=True)
         self.encoder.save(os.path.join(artifact_dir, "encoder.npz"))
@@ -113,6 +227,9 @@ class ColdStartRecommender:
             "user2idx": {str(k): v for k, v in self.user2idx.items()},
             "user_pos_items": {str(u): sorted(items)
                                for u, items in self.user_pos_items.items()},
+            "user_meta": {str(k): v for k, v in self.user_meta.items()},
+            "vertical": self.vertical,
+            "truth_by_item": {str(k): sorted(v) for k, v in self.truth_by_item.items()},
         }
         with open(os.path.join(artifact_dir, "catalog.json"), "w") as f:
             json.dump(payload, f)
@@ -136,4 +253,7 @@ class ColdStartRecommender:
             cold_items=payload["cold"],
             user_pos_items=user_pos,
             user2idx={int(k): int(v) for k, v in payload.get("user2idx", {}).items()},
+            user_meta={int(k): v for k, v in payload.get("user_meta", {}).items()},
+            vertical=payload.get("vertical", "movies"),
+            truth_by_item=payload.get("truth_by_item", {}),
         )

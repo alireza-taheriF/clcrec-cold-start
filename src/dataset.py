@@ -47,12 +47,15 @@ class ContentFeaturizer:
     def _year_column(self, movies: pd.DataFrame) -> np.ndarray:
         years = movies["title"].str.extract(r"\((\d{4})\)").astype(float)
         if self.year_median is None:
-            self.year_median = float(years.iloc[:, 0].median())
+            med = years.iloc[:, 0].median()
+            self.year_median = float(med) if np.isfinite(med) else 0.0
         years = years.fillna(self.year_median)
         year_values = years.iloc[:, 0].to_numpy(dtype=np.float32)
         if self.year_min is None:
-            self.year_min = float(year_values.min())
-            self.year_max = float(year_values.max())
+            self.year_min = float(np.nanmin(year_values)) if year_values.size else 0.0
+            self.year_max = float(np.nanmax(year_values)) if year_values.size else 1.0
+            if not np.isfinite(self.year_min) or not np.isfinite(self.year_max):
+                self.year_min, self.year_max = 0.0, 1.0
         denom = (self.year_max - self.year_min) + 1e-8
         return ((year_values - self.year_min) / denom).reshape(-1, 1).astype(np.float32)
 
@@ -164,11 +167,12 @@ def build_content_features(movies: pd.DataFrame, use_title: bool = True,
     return features, movie_ids, names, featurizer
 
 
-def build_interactions(ratings: pd.DataFrame, pos_threshold: int = 4):
+def build_interactions(ratings: pd.DataFrame, pos_threshold: int = 4,
+                       all_item_ids=None, all_user_ids=None):
     pos = ratings[ratings["rating"] >= pos_threshold]
 
-    all_users = sorted(ratings["user_id"].unique())
-    all_movies = sorted(ratings["movie_id"].unique())
+    all_users = sorted(all_user_ids if all_user_ids is not None else ratings["user_id"].unique())
+    all_movies = sorted(all_item_ids if all_item_ids is not None else ratings["movie_id"].unique())
 
     user2idx = {u: i for i, u in enumerate(all_users)}
     movie2idx = {m: i for i, m in enumerate(all_movies)}

@@ -1,17 +1,32 @@
-# CLCRec Lab Kit
+# FirstSlot (لانچ‌اسلات)
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
 ![NumPy](https://img.shields.io/badge/NumPy-from--scratch-green)
-![Dataset](https://img.shields.io/badge/Dataset-MovieLens--1M-orange)
+![Vertical](https://img.shields.io/badge/Vertical-MRO-orange)
 ![License](https://img.shields.io/badge/License-Lab--Commercial-red)
 
-Academic–industrial toolkit for **item cold-start recommendation**, built on the contrastive idea of CLCRec (Wei et al., ACM MM 2021).
+**The first-impression engine for zero-sale items.**
 
-This repository is the evaluation surface. Institutional use (a course, a lab, a thesis, a grant, or an industry contract) needs a written license — see [`commercial/PROPOSAL_FA.md`](commercial/PROPOSAL_FA.md) (Persian offer for a full professor / industrial-university lab).
+A new SKU is either buried until it sells, or sprayed in a “new arrivals” dump. FirstSlot treats those first impressions as a **scarce launch budget**: encode the item from specs (CLCRec-style contrastive alignment), pick the accounts that will buy *and* yield a clean collaborative signal, and tell merchandising which warm SKU to sit next to.
 
-The model aligns **item content** with **warm-item SVD collaborative embeddings** via InfoNCE, then encodes unseen items from content alone.
+That is the industrial gap. MovieLens HR@K is the research core underneath, not the product.
+
+Persian sell sheet for a professor taking this to a plant / distributor: [`commercial/PROPOSAL_FA.md`](commercial/PROPOSAL_FA.md).
+
+```bash
+python main.py --product
+python main.py --serve          # open http://127.0.0.1:8080
+```
 
 ---
+
+## Product loop
+
+1. Catalog + purchase history (demo: Iranian-style MRO plants and part families).
+2. SVD on **warm** SKUs only — no leakage from the item being launched.
+3. Content encoder maps specs → that space (InfoNCE).
+4. FirstSlot allocates the first *B* impressions with a diversity penalty across plant industries.
+5. KPI a buyer understands: **precision of the first B impressions** vs random spray and “heavy buyers of the same category”.
 
 ## What a lab actually gets
 
@@ -72,10 +87,11 @@ The committed `results.png` is from the legacy demo (150 epochs, `HIDDEN_DIM=32`
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python main.py
+python main.py --product
+python main.py --serve
 ```
 
-Useful commands:
+MovieLens research run:
 
 ```bash
 python main.py --protocol academic
@@ -121,9 +137,10 @@ clcrec-cold-start/
 ├── main.py
 ├── requirements.txt
 ├── LICENSE                      # evaluation vs institutional use
-├── commercial/PROPOSAL_FA.md    # offer letter, three paid packages
+├── commercial/PROPOSAL_FA.md    # professor → industry sell sheet
+├── dashboard/                   # FirstSlot merchant UI
 ├── artifacts/                   # encoder, catalog, metrics (created at run)
-├── tests/test_lab_kit.py
+├── tests/
 └── src/
     ├── config.py
     ├── dataset.py               # download, featurizer, leakage-safe SVD
@@ -132,8 +149,11 @@ clcrec-cold-start/
     ├── baselines.py             # raw content, ridge map
     ├── evaluate.py              # legacy + academic metrics
     ├── recommend.py             # lab / industry inference API
-    ├── experiment.py            # full reproducible run
-    └── serve.py                 # stdlib HTTP
+    ├── experiment.py            # MovieLens reproducible run
+    ├── mro.py                   # industrial demo catalog
+    ├── launch.py                # FirstSlot allocation + launch KPI
+    ├── product.py               # train the sellable vertical
+    └── serve.py                 # UI + HTTP
 ```
 
 ---
