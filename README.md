@@ -1,302 +1,248 @@
-# CLCRec Cold-Start
+# FirstSlot (لانچ‌اسلات)
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue)
-![NumPy](https://img.shields.io/badge/NumPy-only-green)
-![Dataset](https://img.shields.io/badge/Dataset-MovieLens--1M-orange)
+![NumPy](https://img.shields.io/badge/NumPy-from--scratch-green)
+![Vertical](https://img.shields.io/badge/Vertical-MRO-orange)
+![License](https://img.shields.io/badge/License-Lab--Commercial-red)
 
-A lightweight implementation of CLCRec (Contrastive Learning for Cold-Start Recommendation) on the MovieLens-1M dataset. The goal is to learn content-based item embeddings for cold items: items with insufficient user interactions and unreliable collaborative embeddings.
+**The first-impression engine for zero-sale items.**
 
-The model aligns content features (genre and release year) with SVD collaborative embeddings so that, at inference time, recommendations can be made in the same embedding space using content alone.
+A new SKU is either buried until it sells, or sprayed in a “new arrivals” dump. FirstSlot treats those first impressions as a **scarce launch budget**: encode the item from specs (CLCRec-style contrastive alignment), pick the accounts that will buy *and* yield a clean collaborative signal, and tell merchandising which warm SKU to sit next to.
+
+That is the industrial gap. MovieLens HR@K is the research core underneath, not the product.
+
+Persian sell sheet for a professor taking this to a plant / distributor: [`commercial/PROPOSAL_FA.md`](commercial/PROPOSAL_FA.md).
+
+```bash
+python main.py --product
+python main.py --serve          # open http://127.0.0.1:8080
+```
+
+---
+
+## Product loop
+
+1. Catalog + purchase history (demo: Iranian-style MRO plants and part families).
+2. SVD on **warm** SKUs only — no leakage from the item being launched.
+3. Content encoder maps specs → that space (InfoNCE).
+4. FirstSlot allocates the first *B* impressions with a diversity penalty across plant industries.
+5. KPI a buyer understands: **precision of the first B impressions** vs random spray and “heavy buyers of the same category”.
+
+## What a lab actually gets
+
+| Capability | Why it matters in a defense or an industry meeting |
+|---|---|
+| Leakage guard | Cold-item interactions are **excluded from SVD** |
+| Academic protocol | User vector = mean of **warm** history; report cold-pool and full ranking |
+| Baselines | Raw content **and** a ridge map (constraint-style, CB2CF family) |
+| Uncertainty | Bootstrap 95% intervals on HR / Recall / NDCG |
+| New-item API | Title + genres + year → neighbors, no retraining |
+| HTTP service | `POST /v1/new_item` for a live demo |
+| Transparent math | Forward, backward, and Adam are hand-written NumPy |
+
+This is **not** a drop-in clone of the official multimodal CLCRec release (ResNet / VGGish / Sentence2Vec on TikTok–Kwai–Amazon). It is a lab-grade R–E contrastive core that a graduate course can read line by line, then extend.
 
 ---
 
 ## Results
 
-Evaluated on 215 users with cold item interactions (MovieLens-1M).
+### Legacy protocol (original demo)
+
+Evaluated on users with cold-item interactions (MovieLens-1M). Candidate pool = cold items only. Content = genre + year. **This protocol is kept only so the first public table stays reproducible.**
 
 | Model    | HR@5   | HR@10  | HR@20  | NDCG@10 |
 |----------|--------|--------|--------|---------|
 | Baseline | 0.0186 | 0.0651 | 0.1256 | 0.0228  |
 | CLCRec   | 0.0837 | 0.1302 | 0.1953 | 0.0474  |
 
-CLCRec achieves **+100% HR@10** and **+108% NDCG@10** over the baseline.
+```bash
+python main.py --protocol legacy --no-title
+```
+
+### Academic protocol (default — use this in a meeting)
+
+- Collaborative SVD is fit on **warm items only**
+- User embedding uses **warm history only**
+- Metrics: HR, Recall, NDCG with bootstrap intervals
+- Compared against Raw-Content and Ridge-Map
+- Optional title TF–IDF (Truncated SVD) is on by default
+
+```bash
+python main.py --protocol academic
+```
+
+Numbers change versus the legacy table: the task is harder and the split is honest. That is intentional.
 
 ### Visualization
 
-The figure below comes from a full run with the default hyperparameters in `main.py` (150 epochs, `HIDDEN_DIM=32`, `L2_REG=5e-4`).
-
-- **Left:** Hit Rate@K on cold items. CLCRec beats the L2-normalized genre+year baseline at every K, with the largest gap at smaller K where ranking quality matters most.
-- **Right:** InfoNCE training loss over epochs. The steady decline shows the content encoder learning to align with fixed SVD collaborative embeddings.
+The committed `results.png` is from the legacy demo (150 epochs, `HIDDEN_DIM=32`, `L2_REG=5e-4`). A new run writes both `results.png` and `artifacts/results.png`.
 
 ![Hit Rate@K comparison and training loss curve](results.png)
 
 ---
 
-## Overview
+## Quick start
 
-In classical recommender systems, item embeddings are learned from user-item interactions. For new or low-interaction (cold) items, these embeddings are weak or unavailable.
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py --product
+python main.py --serve
+```
 
-This project follows these steps:
+MovieLens research run:
 
-1. Extract collaborative item embeddings from the interaction matrix using SVD.
-2. Train a Content Encoder (MLP) to map content features into the same embedding space.
-3. Optimize with InfoNCE: the content embedding of each warm item should be close to its collaborative embedding.
-4. After training, encode all items (including cold ones) using content features only.
-5. Generate recommendations via the mean embedding of a user's liked items and cosine similarity.
+```bash
+python main.py --protocol academic
+python main.py --protocol legacy --no-title
+python main.py --demo-new-item --title "Dune (2021)" --genres "Action|Adventure|Sci-Fi"
+python main.py --serve          # http://0.0.0.0:8080
+python -m unittest tests.test_lab_kit
+```
+
+HTTP after artifacts exist:
+
+```http
+POST /v1/similar      {"item_id": 1, "k": 10}
+POST /v1/recommend    {"user_id": 1, "k": 10, "pool": "cold"}
+POST /v1/new_item     {"title": "Dune (2021)", "genres": "Action|Sci-Fi", "k": 10}
+GET  /v1/health
+```
 
 ---
 
 ## Architecture
 
 ```
-Content Features (genre + year)
+Content (genre + year [+ title])
         |
         v
-  [Linear + ReLU]          Collaborative Embeddings (SVD)
+  [Linear + ReLU]          Collaborative embeddings (SVD on WARM items only)
         |                            |
         v                            |
   [Linear + L2-Norm]                 |
         |                            |
-        +-------- InfoNCE Loss -------+
+        +-------- InfoNCE (R–E) -----+
 ```
 
-### Content Encoder
-
-- Input: multi-hot genre vector + one normalized year dimension
-- Layer 1: `content_dim -> hidden_dim` with ReLU
-- Layer 2: `hidden_dim -> emb_dim`
-- Output: L2-normalized embedding
-- Optimizer: Adam (hand-written in NumPy)
-- Regularization: L2 on weights
-
-### InfoNCE Loss
-
-In each batch of warm items, the positive pair is `(z_content[i], z_collab[i])`. All other pairs in the batch act as negatives. The `tau` (temperature) parameter controls the sharpness of the softmax.
+At inference, recommendations are cosine similarity between a user vector (mean of liked **warm** items) and content-encoded items — including items that never appeared in SVD.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 clcrec-cold-start/
-├── main.py              # Entry point: full pipeline
-├── requirements.txt     # Dependencies
-├── results.png          # Evaluation chart (committed; see Results)
-├── data/                # MovieLens-1M (downloaded automatically)
+├── main.py
+├── requirements.txt
+├── LICENSE                      # evaluation vs institutional use
+├── commercial/PROPOSAL_FA.md    # professor → industry sell sheet
+├── dashboard/                   # FirstSlot merchant UI
+├── artifacts/                   # encoder, catalog, metrics (created at run)
+├── tests/
 └── src/
-    ├── dataset.py       # Download, preprocessing, SVD, cold/warm split
-    ├── model.py         # ContentEncoder and InfoNCE
-    ├── train.py         # Training loop
-    └── evaluate.py      # HR@K and NDCG@K
+    ├── config.py
+    ├── dataset.py               # download, featurizer, leakage-safe SVD
+    ├── model.py                 # encoder + InfoNCE + save/load
+    ├── train.py                 # Adam loop, validation early stop
+    ├── baselines.py             # raw content, ridge map
+    ├── evaluate.py              # legacy + academic metrics
+    ├── recommend.py             # lab / industry inference API
+    ├── experiment.py            # MovieLens reproducible run
+    ├── mro.py                   # industrial demo catalog
+    ├── launch.py                # FirstSlot allocation + launch KPI
+    ├── product.py               # train the sellable vertical
+    └── serve.py                 # UI + HTTP
 ```
-
----
-
-## Requirements
-
-- Python 3.12 (recommended; Python 3.14 on macOS may have pip issues)
-- Internet access to download MovieLens-1M (~5 MB)
-
----
-
-## Installation
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Dependencies
-
-| Package | Purpose |
-|---------|---------|
-| numpy | Core model and evaluation computations |
-| pandas | Loading MovieLens data |
-| scikit-learn | MultiLabelBinarizer for genres |
-| scipy | SVD on sparse interaction matrix |
-| matplotlib | Plotting results |
-| tqdm | Imported in train; available for progress bars |
-
----
-
-## Usage
-
-```bash
-source .venv/bin/activate
-python main.py
-```
-
-### Pipeline Steps
-
-1. Download MovieLens-1M to `data/ml-1m/` (if not present)
-2. Build content features (genre + year)
-3. Build interaction matrix and collaborative embeddings via SVD
-4. Split items into warm/cold based on interaction count
-5. Train the Content Encoder on warm items
-6. Encode all items
-7. Evaluate on cold items for 1,000 random users
-8. Compare against a baseline (raw L2-normalized features, no training)
-9. Save `results.png`
 
 ---
 
 ## Hyperparameters
 
-Default settings in `main.py`:
+Defaults live in `src/config.py` and can be overridden from `main.py`:
 
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| `EMB_DIM` | 32 | Embedding dimension (SVD and encoder) |
-| `HIDDEN_DIM` | 32 | MLP hidden layer size |
-| `COLD_THRESHOLD` | 10 | Items with fewer interactions are cold |
-| `EPOCHS` | 150 | Number of training epochs |
-| `BATCH_SIZE` | 256 | Batch size |
-| `LR` | 0.005 | Adam learning rate |
-| `TAU` | 0.1 | InfoNCE temperature |
-| `L2_REG` | 5e-4 | L2 regularization coefficient |
-| `N_TEST_USERS` | 1000 | Number of users for evaluation |
-| `SEED` | 42 | Random seed |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `emb_dim` | 32 | SVD and encoder width |
+| `hidden_dim` | 32 | MLP hidden size |
+| `cold_threshold` | 10 | Frequency split (unless `cold_ratio` is set) |
+| `epochs` | 150 | Max epochs (early stopping on warm val loss) |
+| `batch_size` | 256 | Warm-item batch |
+| `lr` | 0.005 | Adam |
+| `tau` | 0.1 | InfoNCE temperature |
+| `l2_reg` | 5e-4 | Weight decay |
+| `patience` | 20 | Early stopping |
+| `n_test_users` | 1000 | Users sampled for the table |
+| `use_title` | True | Title TF–IDF + SVD |
+| `protocol` | academic | `academic` or `legacy` |
+| `seed` | 42 | RNG |
 
-Edit these values in `main.py` to change model behavior.
+Paper-style random item hold-out:
 
----
-
-## Data
-
-### MovieLens-1M
-
-- Source: [GroupLens MovieLens 1M](https://grouplens.org/datasets/movielens/1m/)
-- Files: `ratings.dat`, `movies.dat`, `users.dat`
-- Positive interaction: rating >= 4
-
-### Content Features
-
-- **Genre**: multi-hot encoding over 18 MovieLens genres
-- **Year**: extracted from title via regex `(YYYY)`, e.g. `"Toy Story (1995)"`
-- Missing years are filled with the median and normalized to [0, 1]
-- Final shape: `(n_movies, 19)` = 18 genres + 1 year
-
-### Warm / Cold Split
-
-- **Warm**: items with at least `COLD_THRESHOLD` positive interactions
-- **Cold**: all other items
-- Training uses warm items only; evaluation uses cold items
-
----
-
-## Evaluation
-
-### Protocol
-
-- For each test user, user embedding = mean of liked item embeddings (excluding ground truth)
-- Candidate pool = cold items only
-- Ground truth = cold items the user has liked
-
-### Metrics
-
-| Metric | Meaning |
-|--------|---------|
-| **HR@K** (Hit Rate) | Whether at least one relevant item appears in top-K |
-| **NDCG@K** | Ranking quality with higher weight on top positions |
-
-Default K values: 5, 10, 20
-
-### Baseline
-
-Raw features (genre + year) are L2-normalized without training, then evaluated with the same protocol.
-
----
-
-## Output
-
-### Terminal
-
-```
-Users: 6040 | Movies: 3706 | Genres: 19
-Warm: ... | Cold: ...
-Training CLCRec | epochs=150 | batch=256 | τ=0.1
-  Epoch  10/150  |  Loss: ...
-  ...
-
-── CLCRec (Contrastive) ──
-   K |   HR@K | NDCG@K | #Users
-  ...
-
-── Baseline (Raw Genre Vectors) ──
-   K |   HR@K | NDCG@K | #Users
-  ...
-
-Chart saved to results.png
+```bash
+python main.py --cold-ratio 0.2
 ```
 
-### Chart output
+---
 
-Running `python main.py` writes `results.png` to the project root. A sample run is shown in the [Results](#results) section above.
+## Evaluation protocols
 
-The file contains two panels:
+**Legacy.** Same as the first public README: candidate pool is all cold items; user vector excludes ground-truth cold items but may still include other cold likes; SVD historically saw those interactions. Kept for the published HR table.
 
-1. Hit Rate@K for CLCRec vs. Baseline
-2. Training loss curve over epochs
+**Academic (default).** Matches the scientific claim of *complete* item cold-start more closely:
+
+1. Draw warm / cold by frequency or by `--cold-ratio`
+2. Fit SVD **without** cold columns
+3. Train the encoder only on warm items
+4. Build each test user from warm likes
+5. Score cold-pool ranking **and** full-catalog ranking of cold ground truth
+6. Report HR / Recall / NDCG with bootstrap intervals
+
+Official CLCRec also uses a random cold hold-out, full ranking, and extra U–I contrastive terms on multimodal features. Those extensions are listed as thesis topics in the commercial proposal.
 
 ---
 
-## Modules
+## Python API
 
-### `src/dataset.py`
+```python
+from src.recommend import ColdStartRecommender
 
-| Function | Description |
-|----------|-------------|
-| `download_movielens` | Download and extract MovieLens-1M |
-| `load_movielens` | Load ratings and movies |
-| `build_content_features` | Build feature matrix (genre + year) |
-| `build_interactions` | Build user-item positives and index mappings |
-| `build_collab_embeddings` | SVD on sparse interaction matrix |
-| `split_cold_warm` | Split items into warm/cold |
-
-### `src/model.py`
-
-| Class / Function | Description |
-|------------------|-------------|
-| `ContentEncoder` | Two-layer MLP with forward/backward/adam |
-| `infonce_loss` | Compute loss and gradient w.r.t. z_content |
-
-### `src/train.py`
-
-| Function | Description |
-|----------|-------------|
-| `train` | Epoch/batch loop, shuffle warm items, return encoder and history |
-
-### `src/evaluate.py`
-
-| Function | Description |
-|----------|-------------|
-| `get_user_embedding` | Mean embedding of liked items |
-| `hit_rate_and_ndcg` | HR@K and NDCG@K for one user |
-| `evaluate` | Evaluate on test users and print results table |
+rec = ColdStartRecommender.load("artifacts")
+rec.similar_items(1, k=10)
+rec.recommend_user(1, k=10, pool="cold")
+rec.recommend_for_new_item("Dune", "Action|Adventure|Sci-Fi", year=2021)
+```
 
 ---
 
-## Implementation Notes
+## Tests
 
-- **Pure NumPy**: forward pass, backward pass, and Adam are implemented manually; no autograd.
-- **He initialization**: weights are initialized with `sqrt(2 / (fan_in + fan_out))`.
-- **Small batches**: batches with fewer than 8 items are skipped.
-- **Indexing**: `content_matrix` is ordered by `movie_id`; remapped to `movie_idx` in `main.py`.
+```bash
+python -m unittest tests.test_lab_kit
+```
+
+The suite covers encoder save/load, InfoNCE, leakage-safe SVD, the featurizer, a short train + academic table, and the recommender API. It does not download MovieLens.
 
 ---
 
-## Limitations
+## License and commercial use
 
-- Only simple side information (genre + year) is used; title text or plot summaries are not used.
-- Collaborative embeddings are fixed (SVD runs once) and not updated during training.
-- Evaluation is not leave-one-out; all cold items liked by a user are in the candidate pool.
-- Results are sensitive to seed and hyperparameters.
+Personal technical evaluation of this clone is allowed for 30 days. Teaching, lab-wide use, grant text, or industry work requires a license.
+
+Three packages are specified for an industrial-university professor in [`commercial/PROPOSAL_FA.md`](commercial/PROPOSAL_FA.md):
+
+1. Lab license (course / group use + transfer session)
+2. 12-week research collaboration (paper / thesis)
+3. University–industry contract (ارتباط با صنعت)
+
+Contact: see the license file.
 
 ---
 
 ## References
 
-- MovieLens: Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets.
-- InfoNCE / Contrastive Learning: Oord, A. van den, et al. (2018). Representation Learning with Contrastive Predictive Coding.
-- CLCRec: Wei, W., et al. (2021). Contrastive Learning for Cold-Start Recommendation.
+- Harper, F. M., & Konstan, J. A. (2015). The MovieLens Datasets.
+- Oord, A. van den, et al. (2018). Representation Learning with Contrastive Predictive Coding.
+- Wei, W., et al. (2021). Contrastive Learning for Cold-Start Recommendation. ACM MM.  
+  Official code: https://github.com/weiyinwei/CLCRec

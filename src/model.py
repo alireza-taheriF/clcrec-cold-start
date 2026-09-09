@@ -81,6 +81,22 @@ class ContentEncoder:
             results.append(z)
         return np.vstack(results)
 
+    def save(self, path: str) -> None:
+        np.savez(
+            path,
+            W1=self.W1, b1=self.b1, W2=self.W2, b2=self.b2,
+            lr=np.array([self.lr], dtype=np.float32),
+        )
+
+    @classmethod
+    def load(cls, path: str) -> "ContentEncoder":
+        data = np.load(path)
+        W1, W2 = data["W1"], data["W2"]
+        obj = cls(W1.shape[0], W2.shape[1], W1.shape[1], float(data["lr"][0]))
+        obj.W1, obj.b1 = data["W1"], data["b1"]
+        obj.W2, obj.b2 = data["W2"], data["b2"]
+        return obj
+
 
 def infonce_loss(z_content: np.ndarray, z_collab: np.ndarray,
                  tau: float = 0.1):
