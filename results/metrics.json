@@ -1,0 +1,91 @@
+{
+  "config": {
+    "pos_threshold": 4,
+    "cold_threshold": 10,
+    "emb_dim": 32,
+    "use_text_features": true,
+    "text_dim": 32,
+    "hidden_dim": 32,
+    "torch_hidden_dim": 64,
+    "tau": 0.1,
+    "learnable_tau": false,
+    "user_attention": true,
+    "hard_negatives": true,
+    "hard_negative_weight": 0.5,
+    "joint_training": false,
+    "bpr_weight": 1.0,
+    "epochs": 60,
+    "batch_size": 256,
+    "lr": 0.005,
+    "l2_reg": 0.0005,
+    "seed": 42,
+    "n_test_users": 300,
+    "ks": [
+      5,
+      10,
+      20
+    ],
+    "backend": "torch",
+    "device": "auto",
+    "paths": {
+      "root": "/Users/alireza/clcrec-cold-start",
+      "data_dir": "/Users/alireza/clcrec-cold-start/data",
+      "results_dir": "/Users/alireza/clcrec-cold-start/results",
+      "artifacts_dir": "/Users/alireza/clcrec-cold-start/results/artifacts"
+    }
+  },
+  "n_test_users_effective": 300,
+  "results": {
+    "CLCRec (Contrastive)": {
+      "5": {
+        "HR": 0.046875,
+        "NDCG": 0.008343312137419335,
+        "n": 64
+      },
+      "10": {
+        "HR": 0.09375,
+        "NDCG": 0.02296654018541768,
+        "n": 64
+      },
+      "20": {
+        "HR": 0.140625,
+        "NDCG": 0.031866442343819815,
+        "n": 64
+      }
+    },
+    "Content-KNN": {
+      "5": {
+        "HR": 0.015625,
+        "NDCG": 0.0031579272890710558,
+        "n": 64
+      },
+      "10": {
+        "HR": 0.015625,
+        "NDCG": 0.005277489373953052,
+        "n": 64
+      },
+      "20": {
+        "HR": 0.125,
+        "NDCG": 0.025634032692148433,
+        "n": 64
+      }
+    },
+    "SVD-CF": {
+      "5": {
+        "HR": 0.46875,
+        "NDCG": 0.25507303796392433,
+        "n": 64
+      },
+      "10": {
+        "HR": 0.5625,
+        "NDCG": 0.2757968528075286,
+        "n": 64
+      },
+      "20": {
+        "HR": 0.703125,
+        "NDCG": 0.32348573012390514,
+        "n": 64
+      }
+    }
+  }
+}
